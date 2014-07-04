@@ -1,0 +1,2 @@
+# Shumilog - shumigrammation in logique
+
