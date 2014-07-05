@@ -1,18 +1,27 @@
 module Terms where
 import Data.Array.IArray
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 
-newtype Symbol = Symbol Int
+newtype Symbol = Symbol {symbolID :: Int} deriving (Eq, Ord)
 
 data Term = Compound !Symbol ![Term]
           | Variable Int
 
-data Predicate = Predicate !Symbol ![Term]
+data Predicate = Predicate {
+  predSymbol :: !Symbol,
+  predArgs :: ![Term]
+}
 
-data Clause = Clause !Int [Term] [Predicate]
+data Clause = Clause {
+  clauseAbstraction :: !Int,
+  clauseAbstractionNames :: Map.Map Int String,
+  clauseArgs :: [Term],
+  clauseValue :: [Predicate]
+}
 
 data Environment = Environment {
   symbolMap :: Map.Map (String, Int) Symbol,
-  symbolNames :: Array Int (String, Int),
+  symbolNames :: Map.Map Symbol (String, Int),
+  freshSymbolID :: Int,
   predicateDecls :: Array Int [Clause]
 }

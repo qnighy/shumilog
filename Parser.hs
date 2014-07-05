@@ -1,5 +1,12 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Parser where
+module Parser (
+  Term(Compound,Variable),
+  Predicate(Predicate),
+  Clause(Clause),
+  Query(Query),
+  Program(Program),
+  program
+) where
 import Text.Parsec
 import Control.Applicative ((<$>),(<$),(<*>),(*>),(<*),pure)
 import qualified Text.Parsec.Token as TP

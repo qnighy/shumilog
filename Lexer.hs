@@ -1,5 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
-module Lexer where
+module Lexer (
+  whiteSpace,
+  atom',
+  atom,
+  variable,
+  symbol
+)where
 import Data.Char (isSpace)
 import Control.Applicative ((<$>),(*>),(<*),pure)
 import qualified Control.Applicative as A

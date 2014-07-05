@@ -1,6 +1,7 @@
 import qualified Lexer
 import qualified Parser
 import qualified Terms
+import qualified Compile
 import Text.Parsec
 import System.IO
 
