@@ -25,3 +25,11 @@ data Environment = Environment {
   freshSymbolID :: Int,
   predicateDecls :: Array Int [Clause]
 }
+
+empty_env :: Environment
+empty_env = Environment {
+  symbolMap = Map.empty,
+  symbolNames = Map.empty,
+  freshSymbolID = 0,
+  predicateDecls = array (0, 0) []
+}
