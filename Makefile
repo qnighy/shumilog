@@ -5,8 +5,8 @@
 
 all: shumilog
 
-shumilog: shumilog.hs
-	ghc --make -Wall $<
+shumilog: *.hs
+	ghc --make -Wall shumilog.hs
 
 clean:
 	$(RM) shumilog *.hi *.o
