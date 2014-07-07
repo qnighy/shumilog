@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Parser (
-  Term(Compound,Variable),
+  Term(Compound,Variable,Placeholder),
   Predicate(Predicate),
   Clause(Clause),
   Query(Query),
@@ -9,12 +9,11 @@ module Parser (
 ) where
 import Text.Parsec
 import Control.Applicative ((<$>),(<$),(<*>),(*>),(<*),pure)
-import qualified Text.Parsec.Token as TP
-import Text.Parsec.String
 import Lexer
 
 data Term = Compound String [Term]
           | Variable String
+          | Placeholder
             deriving (Show, Eq)
 
 data Predicate = Predicate String [Term] deriving (Show, Eq)
@@ -28,6 +27,7 @@ data Program = Program [Clause] [Query] deriving Show
 term :: Stream s m Char => ParsecT s u m Term
 term =
   Compound <$> atom' <*> (term_args <|> whiteSpace *> return []) <|>
+  Placeholder <$ symbol "_" <|>
   Variable <$> variable
 
 term_args :: Stream s m Char => ParsecT s u m [Term]
