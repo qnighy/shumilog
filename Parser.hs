@@ -11,9 +11,16 @@ import Preterm
 import Terms
 
 operatorIn :: Stream s m Char => Bool -> [String] -> ParsecT s u m String
-operatorIn _ [] = mzero
-operatorIn True (",":symtail) = operatorIn False symtail
-operatorIn b (sym:symtail) = symbol sym <|> operatorIn b symtail
+operatorIn b syms = try $
+  do { sym <- atom; guard $ elem sym syms; return sym} <|>
+  do { guard $ not b; symbol ","; return "," }
+-- operatorIn _ [] = mzero
+-- operatorIn True (",":symtail) = operatorIn False symtail
+-- -- operatorIn b (sym:symtail) = symbol sym <|> operatorIn b symtail
+-- operatorIn b (sym:symtail) = symbol sym <|> operatorIn b symtail
+
+pCompound2 :: Preterm -> String -> Preterm -> Preterm
+pCompound2 lhs sym rhs = PCompound sym [lhs, rhs]
 
 term :: (MonadState Environment m, Stream s m Char) =>
         Bool -> ParsecT s u m Preterm
@@ -22,23 +29,53 @@ term b = termOps b =<< gets operatorInfo
 termOps :: (MonadState Environment m, Stream s m Char) =>
            Bool -> [(Int,OperatorType,[String])] -> ParsecT s u m Preterm
 termOps _ [] =
-  PCompound <$> atom' <*> (term_args <|> whiteSpace *> return []) <|>
+  PCompound <$> atomParen <*> term_list <* symbol ")" <|>
+  PCompound <$> atom <*> return [] <|>
   PPlaceholder <$ symbol "_" <|>
   PVariable <$> variable <|>
   symbol "(" *> term False <* symbol ")"
 termOps b oprs@((_,XF,oprsym):oprtail) = do
   trm <- termOps b oprtail
-  flip PCompound [trm] <$> operatorIn b oprsym <|> return trm
+  syms <- atmost1 $ opEater1 <$> operatorIn b oprsym
+  return $ fold_eat trm syms
 termOps b oprs@((_,YF,oprsym):oprtail) = do
   trm <- termOps b oprtail
-  syms <- many $ operatorIn b oprsym
-  return (foldl (\t sym -> PCompound sym [t]) trm syms)
+  syms <- many $ opEater1 <$> operatorIn b oprsym
+  return $ fold_eat trm syms
+termOps b oprs@((_,XFX,oprsym):oprtail) = do
+  trm <- termOps b oprtail
+  pCompound2 trm <$> operatorIn b oprsym <*> termOps b oprtail <|>
+    return trm
+termOps b oprs@((_,XFY,oprsym):oprtail) = do
+  trm <- termOps b oprtail
+  pCompound2 trm <$> operatorIn b oprsym <*> termOps b oprs <|>
+    return trm
+termOps b oprs@((_,YFX,oprsym):oprtail) = do
+  trm <- termOps b oprtail
+  syms <- many $ opEater2 <$> operatorIn2 b oprsym oprtail
+  return $ fold_eat trm syms
+  
 -- TODO: other operator type
 termOps b (_:oprtail) = termOps b oprtail
 
-term_args :: (MonadState Environment m, Stream s m Char) =>
-             ParsecT s u m [Preterm]
-term_args = symbol "(" *> term_list <* symbol ")"
+atmost1 :: ParsecT s u m a -> ParsecT s u m [a]
+atmost1 p = (:[]) <$> p <|> return []
+
+opEater1 :: String -> Preterm -> Preterm
+opEater1 oprsym lhs = PCompound oprsym [lhs]
+
+opEater2 :: (String,Preterm) -> Preterm -> Preterm
+opEater2 (oprsym,rhs) lhs = PCompound oprsym [lhs, rhs]
+
+fold_eat :: Preterm -> [Preterm -> Preterm] -> Preterm
+fold_eat trm syms_eater = foldl (\t sym_eater -> sym_eater t) trm syms_eater
+
+operatorIn2 ::
+  (MonadState Environment m, Stream s m Char) =>
+  Bool -> [String] -> [(Int,OperatorType,[String])] ->
+  ParsecT s u m (String, Preterm)
+operatorIn2 b oprsym oprs =
+  (,) <$> operatorIn b oprsym <*> termOps b oprs
 
 term_list :: (MonadState Environment m, Stream s m Char) =>
              ParsecT s u m [Preterm]

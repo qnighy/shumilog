@@ -69,7 +69,7 @@ data Environment = Environment {
 
 foo = [
   (1200, XFX, ["-->", ":-"]),
-  (1200, FX, [":-", "?-"]),
+  -- (1200, FX, [":-", "?-"]),
   (1150, FX, ["dynamic", "discontiguous", "initialization", "meta_predicate", "module_transparent", "multifile", "thread_local", "volatile"]),
   (1100, XFY, [";", "|"]),
   (1050, XFY, ["->", "*->"]),

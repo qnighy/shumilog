@@ -1,17 +1,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Lexer (
   whiteSpace,
-  atom',
+  atomParen,
   atom,
   variable,
   symbol
 )where
 import Data.Char (isSpace)
 import Control.Applicative ((<$>),(<*>),(*>),(<*))
+import Control.Monad
 import Text.Parsec
 
 special :: Stream s m Char => ParsecT s u m Char
-special = oneOf "+-*/\\^~:.?@#$&"
+special = oneOf "+-*/\\^~:.?@#$&<>="
 
 upperPr :: Stream s m Char => ParsecT s u m Char
 upperPr = upper <|> char '_'
@@ -21,7 +22,7 @@ character = lower <|> upperPr <|> digit
 
 characterInSingleQuote :: Stream s m Char => ParsecT s u m Char
 characterInSingleQuote =
-  string "''" *> return '\'' <|>
+  try (string "''") *> return '\'' <|>
   char '\\' *> noneOf "" <|>
   noneOf "'"
 
@@ -46,19 +47,28 @@ lexeme :: Stream s m Char => ParsecT s u m a => ParsecT s u m a
 lexeme = (<* whiteSpace)
 
 small_atom' :: Stream s m Char => ParsecT s u m String
-small_atom' = try $ do
+small_atom' = do
   ch <- lower
   chs <- many character
   return (ch:chs)
 
-atom' :: Stream s m Char => ParsecT s u m String
-atom' =
+special_atom' :: Stream s m Char => [String] -> ParsecT s u m String
+special_atom' ex = do
+  str <- (:) <$> special <*> many special
+  guard $ notElem str ex
+  return str
+
+atom' :: Stream s m Char => [String] -> ParsecT s u m String
+atom' ex =
   small_atom' <|>
-  (:) <$> special <*> many special <|>
+  special_atom' ex <|>
   char '\'' *> many characterInSingleQuote <* char '\''
 
+atomParen :: Stream s m Char => ParsecT s u m String
+atomParen = lexeme $ try $ atom' [] <* char '('
+
 atom :: Stream s m Char => ParsecT s u m String
-atom = lexeme atom'
+atom = lexeme $ try $ atom' [",", "."]
 
 variable :: Stream s m Char => ParsecT s u m String
 variable = lexeme $ try $ do
