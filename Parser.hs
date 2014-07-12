@@ -1,54 +1,54 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Parser (
-  Term(Compound,Variable,Placeholder),
-  Predicate(Predicate),
-  Clause(Clause),
-  Query(Query),
-  Program(Program),
-  program
+  OperatorType(XF, YF, XFX, XFY, YFX, FY, FX),
+  statementOrEnd
 ) where
 import Text.Parsec
-import Control.Applicative ((<$>),(<$),(<*>),(*>),(<*),pure)
+import Control.Applicative ((<$>),(<$),(<*>),(*>),(<*))
+import Control.Monad.State.Strict
 import Lexer
+import Preterm
+import Terms
 
-data Term = Compound String [Term]
-          | Variable String
-          | Placeholder
-            deriving (Show, Eq)
+operatorIn :: Stream s m Char => Bool -> [String] -> ParsecT s u m String
+operatorIn _ [] = mzero
+operatorIn True (",":symtail) = operatorIn False symtail
+operatorIn b (sym:symtail) = symbol sym <|> operatorIn b symtail
 
-data Predicate = Predicate String [Term] deriving (Show, Eq)
+term :: (MonadState Environment m, Stream s m Char) =>
+        Bool -> ParsecT s u m Preterm
+term b = termOps b =<< gets operatorInfo
 
-data Clause = Clause Predicate [Predicate] deriving Show
+termOps :: (MonadState Environment m, Stream s m Char) =>
+           Bool -> [(Int,OperatorType,[String])] -> ParsecT s u m Preterm
+termOps _ [] =
+  PCompound <$> atom' <*> (term_args <|> whiteSpace *> return []) <|>
+  PPlaceholder <$ symbol "_" <|>
+  PVariable <$> variable <|>
+  symbol "(" *> term False <* symbol ")"
+termOps b oprs@((_,XF,oprsym):oprtail) = do
+  trm <- termOps b oprtail
+  flip PCompound [trm] <$> operatorIn b oprsym <|> return trm
+termOps b oprs@((_,YF,oprsym):oprtail) = do
+  trm <- termOps b oprtail
+  syms <- many $ operatorIn b oprsym
+  return (foldl (\t sym -> PCompound sym [t]) trm syms)
+-- TODO: other operator type
+termOps b (_:oprtail) = termOps b oprtail
 
-data Query = Query [Predicate] deriving Show
+term_args :: (MonadState Environment m, Stream s m Char) =>
+             ParsecT s u m [Preterm]
+term_args = symbol "(" *> term_list <* symbol ")"
 
-data Program = Program [Clause] [Query] deriving Show
+term_list :: (MonadState Environment m, Stream s m Char) =>
+             ParsecT s u m [Preterm]
+term_list = (:) <$> term True <*> (symbol "," *> term_list <|> return [])
 
-term :: Stream s m Char => ParsecT s u m Term
-term =
-  Compound <$> atom' <*> (term_args <|> whiteSpace *> return []) <|>
-  Placeholder <$ symbol "_" <|>
-  Variable <$> variable
+statementOrEnd :: (MonadState Environment m, Stream s m Char) =>
+                  ParsecT s u m (Maybe Preterm)
+statementOrEnd =
+  Just <$> term False <* symbol "." <|>
+  Nothing <$ eof
 
-term_args :: Stream s m Char => ParsecT s u m [Term]
-term_args = symbol "(" *> term_args_remain where
-  term_args_remain = (:) <$> term <*>
-    (symbol ")" *> return [] <|> symbol "," *> term_args_remain)
-
-predicate :: Stream s m Char => ParsecT s u m Predicate
-predicate = Predicate <$> atom' <*> (term_args <|> whiteSpace *> return [])
-
-predicate_list :: Stream s m Char => ParsecT s u m [Predicate]
-predicate_list = (:) <$> predicate <*>
-  (symbol "," *> predicate_list <|> return [])
-
-clause :: Stream s m Char => ParsecT s u m Clause
-clause = Clause <$> predicate <*>
-  (symbol "." *> return [] <|>
-   symbol ":-" *> predicate_list <* symbol ".")
-
-query :: Stream s m Char => ParsecT s u m Query
-query = Query <$ symbol "?-" <*> predicate_list <* symbol "."
-
-program :: Stream s m Char => ParsecT s u m Program
-program = Program <$ whiteSpace <*> many clause <*> many query <* eof
+-- program :: Stream s m Char => ParsecT s u m Program
+-- program = Program <$ whiteSpace <*> many clause <*> many query <* eof

@@ -7,8 +7,7 @@ module Lexer (
   symbol
 )where
 import Data.Char (isSpace)
-import Control.Applicative ((<$>),(*>),(<*),pure)
-import qualified Control.Applicative as A
+import Control.Applicative ((<$>),(<*>),(*>),(<*))
 import Text.Parsec
 
 special :: Stream s m Char => ParsecT s u m Char
@@ -18,7 +17,13 @@ upperPr :: Stream s m Char => ParsecT s u m Char
 upperPr = upper <|> char '_'
 
 character :: Stream s m Char => ParsecT s u m Char
-character = lower <|> upperPr <|> digit <|> special
+character = lower <|> upperPr <|> digit
+
+characterInSingleQuote :: Stream s m Char => ParsecT s u m Char
+characterInSingleQuote =
+  string "''" *> return '\'' <|>
+  char '\\' *> noneOf "" <|>
+  noneOf "'"
 
 nestedComment :: Stream s m Char => ParsecT s u m ()
 nestedComment = string "/*" *> nestedCommentRest where
@@ -49,7 +54,8 @@ small_atom' = try $ do
 atom' :: Stream s m Char => ParsecT s u m String
 atom' =
   small_atom' <|>
-  char '\'' *> many character <* char '\''
+  (:) <$> special <*> many special <|>
+  char '\'' *> many characterInSingleQuote <* char '\''
 
 atom :: Stream s m Char => ParsecT s u m String
 atom = lexeme atom'

@@ -1,88 +1,118 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Terms (
+  M,
+  OperatorType(XF, YF, XFX, XFY, YFX, FY, FX),
   Symbol(Symbol, symbolID),
+  AbstractableElement,
+  shiftElement,
   Term(Compound, Variable, Placeholder),
-  shiftTerm,
-  Predicate(Predicate, predSymbol, predArgs),
-  Clause(Clause, clauseAbstraction, clauseAbstractionNames,
-         clauseArgs, clauseValue),
-  Query(Query, queryAbstraction, queryAbstractionNames, queryValue),
+  Abstraction(Abstraction, abstractionSize, abstractionNames, abstractionValue),
+  PredicateDef(NormalPredicateDef,SpecialPredicateDef),
   Environment(Environment, symbolMap, symbolNames,
-              freshSymbolID, predicateDecls),
+              freshSymbolID, predicates, operatorInfo),
   empty_env,
   getsym,
   getsymname,
   TermEnv(TermEnv, abstSize, abstMap, abstNames),
   emptyTermEnv,
-  showTerm,
-  showPredicate,
-  showClause
+  showTerm
 ) where
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
-import Control.Monad.Reader
+import Control.Monad.State.Strict
 import Control.Monad.Error
 import Control.Applicative
 
+type M = ErrorT String (StateT Environment IO)
+
+data OperatorType = XF | YF | XFX | XFY | YFX | FY | FX deriving (Eq, Show)
+
 newtype Symbol = Symbol {symbolID :: Int} deriving (Eq, Ord)
+
+class AbstractableElement a where
+  shiftElement :: Int -> a -> a
+
+instance AbstractableElement a => AbstractableElement [a] where
+  shiftElement s = map $ shiftElement s
+
+instance (AbstractableElement a, AbstractableElement b) => AbstractableElement (a, b) where
+  shiftElement s (x, y) = (shiftElement s x, shiftElement s y)
+
+data Abstraction a = Abstraction {
+  abstractionSize :: !Int,
+  abstractionNames :: !(Map.Map Int String),
+  abstractionValue :: a
+}
 
 data Term = Compound !Symbol ![Term]
           | Variable !Int
           | Placeholder
 
+instance AbstractableElement Term where
+  shiftElement s (Compound sym args) = Compound sym (map (shiftElement s) args)
+  shiftElement s (Variable num) = Variable (num + s)
+  shiftElement _ Placeholder = Placeholder
 
-shiftTerm :: Int -> Term -> Term
-shiftTerm s (Compound sym args) = Compound sym (map (shiftTerm s) args)
-shiftTerm s (Variable num) = Variable (num + s)
-shiftTerm _ Placeholder = Placeholder
-
-data Predicate = Predicate {
-  predSymbol :: !Symbol,
-  predArgs :: ![Term]
-}
-
-data Clause = Clause {
-  clauseAbstraction :: !Int,
-  clauseAbstractionNames :: !(Map.Map Int String),
-  clauseArgs :: ![Term],
-  clauseValue :: ![Predicate]
-}
-
-data Query = Query {
-  queryAbstraction :: !Int,
-  queryAbstractionNames :: !(Map.Map Int String),
-  queryValue :: ![Predicate]
-}
+data PredicateDef = NormalPredicateDef
+                      [Abstraction ([Term], [Term])]
+                      [Abstraction ([Term], [Term])]
+                  | SpecialPredicateDef -- TODO
 
 data Environment = Environment {
   symbolMap :: !(Map.Map (String, Int) Symbol),
   symbolNames :: !(Map.Map Symbol (String, Int)),
   freshSymbolID :: !Int,
-  predicateDecls :: !(Map.Map Symbol [Clause])
+  predicates :: !(Map.Map Symbol PredicateDef),
+  operatorInfo :: [(Int,OperatorType,[String])]
 }
+
+foo = [
+  (1200, XFX, ["-->", ":-"]),
+  (1200, FX, [":-", "?-"]),
+  (1150, FX, ["dynamic", "discontiguous", "initialization", "meta_predicate", "module_transparent", "multifile", "thread_local", "volatile"]),
+  (1100, XFY, [";", "|"]),
+  (1050, XFY, ["->", "*->"]),
+  (1000, XFY, [","]),
+  (990, XFX, [":="]),
+  (900, FY, ["\\+"]),
+  (900, FX, ["~"]),
+  (700, XFX, ["<", "=", "=..", "=@=", "=:=", "=<", "==", "=\\=", ">", ">=", "@<", "@=<", "@>", "@>=", "\\=", "\\==", "is", ">:<", ":<"]),
+  (600, XFY, [":"]),
+  (500, YFX, ["+", "-", "/\\", "\\/", "xor"]),
+  (500, FX, ["?"]),
+  (400, YFX, ["*", "/", "//", "rdiv", "<<", ">>", "mod", "rem"]),
+  (200, XFX, ["**"]),
+  (200, XFY, ["^"]),
+  (200, FY, ["+", "-", "\\"])]
 
 empty_env :: Environment
 empty_env = Environment {
   symbolMap = Map.empty,
   symbolNames = Map.empty,
   freshSymbolID = 0,
-  predicateDecls = Map.empty
+  predicates = Map.empty,
+  operatorInfo = foo
 }
 
-getsym :: (Functor m, Monad m,
-           MonadReader Environment m, MonadError String m) =>
-            (String, Int) -> m Symbol
+getsym :: (String, Int) -> M Symbol
 getsym nam = do
-  res <- Map.lookup nam <$> (symbolMap <$> ask)
-  case res of
-    Just x -> return x
-    Nothing -> throwError "atom not found"
+  e <- get
+  case Map.lookup nam (symbolMap e) of
+    Just sym -> return sym
+    Nothing -> do
+      let fresh = freshSymbolID e
+      let freshsym = Symbol fresh
+      put $ e {
+        symbolMap = Map.insert nam freshsym $ symbolMap e,
+        symbolNames = Map.insert freshsym nam $ symbolNames e,
+        freshSymbolID = fresh + 1
+      }
+      return freshsym
 
-getsymname :: (Functor m, Monad m, MonadReader Environment m) =>
-                Symbol -> m String
+getsymname :: Symbol -> M String
 getsymname sym = do
-  x <- Map.lookup sym <$> (symbolNames <$> ask)
+  x <- Map.lookup sym <$> (symbolNames <$> get)
   return $ fst $ fromJust x
 
 data TermEnv = TermEnv {
@@ -98,7 +128,7 @@ emptyTermEnv = TermEnv {
   abstNames = Map.empty
 }
 
-showTerm :: (Functor m, Monad m, MonadReader Environment m) => Term -> m String
+showTerm :: Term -> M String
 showTerm (Compound sym args) = do
   nam <- getsymname sym
   argstr <- mapM showTerm args
@@ -106,16 +136,3 @@ showTerm (Compound sym args) = do
 showTerm (Variable varid) = return $ "?" ++ show varid
 showTerm Placeholder = return $ "_"
 
-showPredicate :: (Functor m, Monad m, MonadReader Environment m) =>
-                   Predicate -> m String
-showPredicate (Predicate sym args) = do
-  nam <- getsymname sym
-  argstr <- mapM showTerm args
-  return $ nam ++ "(" ++ intercalate ", " argstr ++ ")"
-
-showClause :: (Functor m, Monad m, MonadReader Environment m) =>
-                   Symbol -> Clause -> m String
-showClause sym cl = do
-  predstr <- showPredicate $ Predicate sym (clauseArgs cl)
-  predstrs <- mapM showPredicate (clauseValue cl)
-  return $ predstr ++ " :- " ++ intercalate "," predstrs ++ "."

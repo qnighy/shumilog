@@ -1,41 +1,19 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Compile (
-  compile,
-  compileQuery
+  compileStatement,
+  -- compileQuery
 ) where
 import Terms
+import Preterm
+import Eval
 import Control.Applicative
 import Control.Monad.State.Strict
-import Control.Monad.Reader
 import Control.Monad.Error
-import qualified Parser as Parser
 import qualified Data.Map.Strict as Map
 
-data CompileEnv = CompileEnv {
-  clauseDecls :: Map.Map Symbol [Clause]
-}
-emptyCompileEnv :: CompileEnv
-emptyCompileEnv = CompileEnv { clauseDecls = Map.empty }
-
-type M = StateT CompileEnv (State Environment)
 type M2 = StateT TermEnv M
 
-getsymState :: (Monad m, MonadState Environment m) => (String, Int) -> m Symbol
-getsymState nam = do
-  e <- get
-  case Map.lookup nam (symbolMap e) of
-    Just sym -> return sym
-    Nothing -> do
-      let fresh = freshSymbolID e
-      let freshsym = Symbol fresh
-      put $ e {
-        symbolMap = Map.insert nam freshsym $ symbolMap e,
-        symbolNames = Map.insert freshsym nam $ symbolNames e,
-        freshSymbolID = fresh + 1
-      }
-      return freshsym
-
-getvar :: (Monad m, MonadState TermEnv m) => String -> m Int
+getvar :: String -> StateT TermEnv M Int
 getvar nam = do
   e <- get
   case Map.lookup nam (abstMap e) of
@@ -49,71 +27,115 @@ getvar nam = do
       }
       return idx
 
-term :: (Functor m, Applicative m, Monad m,
-         MonadReader Environment m, MonadState TermEnv m,
-         MonadError String m) =>
-        Parser.Term -> m Term
-term (Parser.Compound nam args) =
-  Compound <$> getsym (nam, length args)
-           <*> mapM term args
-term (Parser.Variable nam) =
+compileTerm :: Preterm -> M2 Term
+compileTerm (PCompound nam args) =
+  Compound <$> (lift . getsym) (nam, length args)
+           <*> mapM compileTerm args
+compileTerm (PVariable nam) =
   Variable <$> getvar nam
-term Parser.Placeholder = pure Placeholder
+compileTerm PPlaceholder = pure Placeholder
 
-termState :: Parser.Term -> M2 Term
-termState (Parser.Compound nam args) =
-  Compound <$> (lift . lift . getsymState) (nam, length args)
-           <*> mapM termState args
-termState (Parser.Variable nam) =
-  Variable <$> getvar nam
-termState Parser.Placeholder = pure Placeholder
+compileTermList :: Preterm -> M2 [Term]
+compileTermList (PCompound "," [t0, t1]) =
+  (++) <$> compileTermList t0 <*> compileTermList t1
+compileTermList t = (:[]) <$> compileTerm t
 
-predicate :: (Functor m, Applicative m, Monad m,
-              MonadReader Environment m, MonadError String m,
-              MonadState TermEnv m) =>
-             Parser.Predicate -> m Predicate
-predicate (Parser.Predicate nam destr) =
-  Predicate <$> getsym (nam, length destr)
-            <*> mapM term destr
+compileStatement' :: Preterm -> M2 (Symbol, ([Term], [Term]))
+compileStatement' (PCompound ":-" [t0, t1]) =
+  case t0 of
+    PCompound t0nam t0args -> do
+      t0namc <- lift $ getsym (t0nam, length t0args)
+      t0argsc <- mapM compileTerm t0args
+      t1c <- compileTermList t1
+      return (t0namc, (t0argsc, t1c))
+    _ -> throwError "Arguments are not sufficiently instantiated"
+compileStatement' (PCompound nam args) = do
+  namc <- lift $ getsym (nam, length args)
+  argsc <- mapM compileTerm args
+  return (namc, (argsc, []))
+compileStatement' _ =
+  throwError "Arguments are not sufficiently instantiated"
 
-predicateState :: Parser.Predicate -> M2 Predicate
-predicateState (Parser.Predicate nam destr) =
-  Predicate <$> (lift . lift . getsymState) (nam, length destr)
-            <*> mapM termState destr
+addToPredicateDef ::
+  Symbol -> Abstraction ([Term], [Term]) -> M ()
+addToPredicateDef nam defn = do
+  env <- get
+  case
+    Map.findWithDefault (NormalPredicateDef [] []) nam
+      (predicates env) of
+    NormalPredicateDef _ rclauses ->
+      let rclauses' = defn : rclauses in
+      put $ env {
+        predicates =
+          Map.insert nam (NormalPredicateDef (reverse rclauses') rclauses')
+            (predicates env)
+      }
+    _ -> throwError "You can't modify this predicate."
 
-addClauseDecl :: Parser.Clause -> M ()
-addClauseDecl (Parser.Clause pr' prs') = do
-  ((pr:prs),tae) <- runStateT (mapM predicateState (pr':prs')) emptyTermEnv
-  ce <- get
-  let cl = Clause {
-    clauseAbstraction = abstSize tae,
-    clauseAbstractionNames = abstNames tae,
-    clauseArgs = predArgs pr,
-    clauseValue = prs
+compileStatement :: Preterm -> M ()
+compileStatement (PCompound "?-" [t]) = do
+  (terms, tenv) <- runStateT (compileTermList t) emptyTermEnv
+  let terms' = Abstraction {
+    abstractionSize = abstSize tenv,
+    abstractionNames = abstNames tenv,
+    abstractionValue = terms
   }
-  put $ ce {
-    clauseDecls = Map.insertWith (++) (predSymbol pr) [cl] $ clauseDecls ce
+  evalQuery terms'
+compileStatement t = do
+  ((sym, defn), tenv) <- runStateT (compileStatement' t) emptyTermEnv
+  let defn' = Abstraction {
+    abstractionSize = abstSize tenv,
+    abstractionNames = abstNames tenv,
+    abstractionValue = defn
   }
+  addToPredicateDef sym defn'
 
-compile :: [Parser.Clause] -> Environment -> Environment
-compile cl env = execState (evalStateT compile' emptyCompileEnv) env where
-  compile' :: M ()
-  compile' = do
-    forM_ cl addClauseDecl
-    ce <- get
-    lift $ modify (\e -> e {
-      predicateDecls = foldl (\m (sym, cls) -> Map.insert sym cls m)
-                             (predicateDecls e)
-                             (Map.assocs $ clauseDecls ce)
-    })
-
-compileQuery :: (Functor m, Monad m, MonadReader Environment m,
-                  MonadError String m) => Parser.Query -> m Query
-compileQuery (Parser.Query prs') = do
-  (prs,tae) <- runStateT (mapM predicate prs') emptyTermEnv
-  return $ Query {
-    queryAbstraction = abstSize tae,
-    queryAbstractionNames = abstNames tae,
-    queryValue = prs
-  }
+-- predicate :: (Functor m, Applicative m, Monad m,
+--               MonadReader Environment m, MonadError String m,
+--               MonadState TermEnv m) =>
+--              Preterm -> m Predicate
+-- predicate (PCompound nam destr) =
+--   Predicate <$> getsym (nam, length destr)
+--             <*> mapM term destr
+-- 
+-- predicateState :: Parser.Predicate -> M2 Predicate
+-- predicateState (Parser.Predicate nam destr) =
+--   Predicate <$> (lift . lift . getsymState) (nam, length destr)
+--             <*> mapM termState destr
+-- 
+-- addClauseDecl :: Parser.Clause -> M ()
+-- addClauseDecl (Parser.Clause pr' prs') = do
+--   ((pr:prs),tae) <- runStateT (mapM predicateState (pr':prs')) emptyTermEnv
+--   ce <- get
+--   let cl = Clause {
+--     clauseAbstraction = abstSize tae,
+--     clauseAbstractionNames = abstNames tae,
+--     clauseArgs = predArgs pr,
+--     clauseValue = prs
+--   }
+--   put $ ce {
+--     clauseDecls = Map.insertWith (++) (predSymbol pr) [cl] $ clauseDecls ce
+--   }
+-- 
+-- compile :: [Parser.Clause] -> Environment -> Environment
+-- compile cl env = execState (evalStateT compile' emptyCompileEnv) env where
+--   compile' :: M ()
+--   compile' = do
+--     forM_ cl addClauseDecl
+--     ce <- get
+--     lift $ modify (\e -> e {
+--       predicateDecls = foldl (\m (sym, cls) -> Map.insert sym cls m)
+--                              (predicateDecls e)
+--                              (Map.assocs $ clauseDecls ce)
+--     })
+-- 
+-- compileQuery :: (Functor m, Monad m, MonadReader Environment m,
+--                   MonadError String m) => Parser.Query -> m Query
+-- compileQuery (Parser.Query prs') = do
+--   (prs,tae) <- runStateT (mapM predicate prs') emptyTermEnv
+--   return $ Query {
+--     queryAbstraction = abstSize tae,
+--     queryAbstractionNames = abstNames tae,
+--     queryValue = prs
+--   }
 
