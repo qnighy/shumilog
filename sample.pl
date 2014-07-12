@@ -10,13 +10,13 @@ parent(sanae,iwao).
 parent(sanae,mine).
 father(X,Y) :- parent(X,Y),male(Y).
 mother(X,Y) :- parent(X,Y),female(Y).
-?-(male(kobo)).
-?-(female(sanae)).
-?-(female(koji)).
-?-(male(X)).
-?-(parent(kobo,X)).
-?-(parent(X,iwao)).
-?-(mother(kobo,X)).
-?-(father(kobo,X)).
-?-(father(_,X)).
-?-(mother(_,X)).
+?- male(kobo).
+?- female(sanae).
+?- female(koji).
+?- male(X).
+?- parent(kobo,X).
+?- parent(X,iwao).
+?- mother(kobo,X).
+?- father(kobo,X).
+?- father(_,X).
+?- mother(_,X).

@@ -68,7 +68,7 @@ atomParen :: Stream s m Char => ParsecT s u m String
 atomParen = lexeme $ try $ atom' [] <* char '('
 
 atom :: Stream s m Char => ParsecT s u m String
-atom = lexeme $ try $ atom' [",", "."]
+atom = lexeme $ try $ atom' [",", "."] <* (try (char '(') *> mzero <|> return ())
 
 variable :: Stream s m Char => ParsecT s u m String
 variable = lexeme $ try $ do

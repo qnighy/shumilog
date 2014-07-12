@@ -13,11 +13,14 @@ import Terms
 operatorIn :: Stream s m Char => Bool -> [String] -> ParsecT s u m String
 operatorIn b syms = try $
   do { sym <- atom; guard $ elem sym syms; return sym} <|>
-  do { guard $ not b; symbol ","; return "," }
+  do { guard $ not b; _ <- symbol ","; return "," }
 -- operatorIn _ [] = mzero
 -- operatorIn True (",":symtail) = operatorIn False symtail
 -- -- operatorIn b (sym:symtail) = symbol sym <|> operatorIn b symtail
 -- operatorIn b (sym:symtail) = symbol sym <|> operatorIn b symtail
+
+pCompound1L :: String -> Preterm -> Preterm
+pCompound1L sym rhs = PCompound sym [rhs]
 
 pCompound2 :: Preterm -> String -> Preterm -> Preterm
 pCompound2 lhs sym rhs = PCompound sym [lhs, rhs]
@@ -54,9 +57,12 @@ termOps b oprs@((_,YFX,oprsym):oprtail) = do
   trm <- termOps b oprtail
   syms <- many $ opEater2 <$> operatorIn2 b oprsym oprtail
   return $ fold_eat trm syms
-  
--- TODO: other operator type
-termOps b (_:oprtail) = termOps b oprtail
+termOps b oprs@((_,FX,oprsym):oprtail) = do
+  pCompound1L <$> operatorIn b oprsym <*> termOps b oprtail <|>
+    termOps b oprtail
+termOps b oprs@((_,FY,oprsym):oprtail) = do
+  pCompound1L <$> operatorIn b oprsym <*> termOps b oprs <|>
+    termOps b oprtail
 
 atmost1 :: ParsecT s u m a -> ParsecT s u m [a]
 atmost1 p = (:[]) <$> p <|> return []
