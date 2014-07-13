@@ -9,8 +9,10 @@ import Control.Monad.State.Strict
 -- import Control.Monad.Cont
 import Control.Monad.List
 import Control.Monad.Error
+import Control.Applicative
 import qualified Data.Map.Strict as Map
 import Terms
+import Preterm
 
 data EvalEnvironment = EvalEnvironment {
   maxVarID :: !Int,
@@ -101,25 +103,22 @@ evalQuery q = do
         liftIO $ putStr $
           Map.findWithDefault ("?" ++ show varid)
                               varid (abstractionNames q) ++ " = "
-        termstr <- showTermA q eenv
+        preterm <- showTermA q eenv
                              (fromJust $ Map.lookup varid (substMap eenv))
-        liftIO $ putStrLn $ termstr ++ " ;"))
+        liftIO $ putStrLn $ showPreterm preterm ++ " ;"))
   liftIO $ putStrLn $ "false ."
 
-showTermA :: Abstraction a -> EvalEnvironment -> Term -> M String
-showTermA a eenv (Compound sym []) = getsymname sym
-showTermA a eenv (Compound sym args) = do
-  nam <- getsymname sym
-  argstr <- mapM (showTermA a eenv) args
-  return $ nam ++ "(" ++ intercalate ", " argstr ++ ")"
-showTermA a eenv (Variable varid) = do
+showTermA :: Abstraction a -> EvalEnvironment -> Term -> M Preterm
+showTermA a eenv (Compound sym args) =
+  PCompound <$> getsymname sym <*> mapM (showTermA a eenv) args
+showTermA a eenv (Variable varid) =
   case Map.lookup varid (substMap eenv) of
     Just t -> showTermA a eenv t
-    Nothing ->
+    Nothing -> PVariable <$>
       if varid < abstractionSize a then
         return $ Map.findWithDefault ("?" ++ show varid)
                                      varid (abstractionNames a)
       else
         return $ "?" ++ show varid
-showTermA _ _ Placeholder = return $ "_"
+showTermA _ _ Placeholder = return PPlaceholder
 
