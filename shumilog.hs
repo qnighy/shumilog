@@ -5,6 +5,7 @@ import Terms
 import Preterm
 import Compile
 import Eval
+import ContT2
 import Text.Parsec
 import qualified Data.Map.Strict as Map
 import Control.Applicative ((*>))

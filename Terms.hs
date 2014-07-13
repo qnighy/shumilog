@@ -26,9 +26,9 @@ import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
 import Control.Monad.List
-import Control.Monad.Cont
 import Control.Monad.Error
 import Control.Applicative
+import ContT2
 
 type M = ErrorT String (StateT Environment IO)
 
@@ -176,4 +176,4 @@ emptyEvalEnv = EvalEnvironment {
   substMap = Map.empty
 }
 
-type Me = StateT EvalEnvironment (ListT (ContT [EvalEnvironment] M))
+type Me = ContT2 () (StateT EvalEnvironment (ListT M))

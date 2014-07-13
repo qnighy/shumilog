@@ -13,7 +13,7 @@ import Control.Applicative
 import qualified Data.Map.Strict as Map
 import Terms
 import Preterm
-
+import ContT2
 
 abstractOut :: AbstractableElement a => Abstraction a -> Me a
 abstractOut x = do
@@ -52,10 +52,10 @@ unify (Compound sym0 args0) (Compound sym1 args1) | sym0 == sym1 =
   zipWithM_ unify args0 args1
 unify _ _ = mzero
 
-evalTermsC :: (() -> Me ()) -> [Term] -> Me ()
+evalTermsC :: (Me () -> Me ()) -> [Term] -> Me ()
 evalTermsC exit [] = return ()
 evalTermsC exit (Compound sym args:remain) = do
-  env <- lift get
+  env <- lift $ lift get
   case Map.lookup sym (predicates env) of
     Just (NormalPredicateDef clauses _) ->
       evalClauses args clauses *> evalTermsC exit remain
@@ -63,7 +63,7 @@ evalTermsC exit (Compound sym args:remain) = do
       pfun args *> evalTermsC exit remain
     -- Just Cut -> evalTermsC return remain
     -- Just Cut -> exit () *> evalTermsC return remain
-    Just Cut -> evalTermsC return remain *> exit ()
+    Just Cut -> exit $ evalTermsC exit remain
     -- Just Cut -> liftIO (putStrLn "cut") *> evalTermsC return remain *> liftIO (putStrLn "exiting") *> exit ()
     -- Just Cut -> exit ()
     Nothing -> lift $ lift $ lift $ throwError "Cannot find predicate"
@@ -78,32 +78,31 @@ evalTermsC _ (Placeholder:_) =
 
 evalClauses :: [Term] -> [Abstraction ([Term], [Term])] -> Me ()
 evalClauses pargs clauses =
-  callCC (\exit -> evalClausesC exit pargs clauses)
+  callCC2 (\exit -> evalClausesC exit pargs clauses)
 
 evalClausesC ::
-  (() -> Me ()) -> [Term] -> [Abstraction ([Term], [Term])] -> Me ()
+  (Me () -> Me ()) -> [Term] -> [Abstraction ([Term], [Term])] -> Me ()
 evalClausesC _ pargs [] = mzero
 evalClausesC exit pargs (cl:cls) =
   evalClauseC exit pargs cl <|> evalClauses pargs cls
 
-evalClauseC :: (() -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
+evalClauseC :: (Me () -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
 evalClauseC exit pargs cl = do
   (args, clvalue) <- abstractOut cl
   zipWithM_ unify args pargs
   evalTermsC exit clvalue
 
 evalQuery' :: Abstraction [Term] -> Me ()
-evalQuery' q = callCC (\exit -> evalQuery'C exit q)
+evalQuery' q = callCC2 (\exit -> evalQuery'C exit q)
 
-evalQuery'C :: (() -> Me ()) -> Abstraction [Term] -> Me ()
+evalQuery'C :: (Me () -> Me ()) -> Abstraction [Term] -> Me ()
 evalQuery'C exit q = do
   qvalue <- abstractOut q
   evalTermsC exit qvalue
 
 evalQuery :: Abstraction [Term] -> M ()
 evalQuery q = do
-  lst <- flip runContT return $ runListT $
-           flip execStateT emptyEvalEnv $ evalQuery' q
+  lst <- runListT $ flip execStateT emptyEvalEnv $ evalContT2 $ evalQuery' q
   -- liftIO $ putStrLn $ (show $ length lst) ++ " answers"
   forM_ lst (\eenv ->
     let varids = filter (<abstractionSize q) (Map.keys (substMap eenv)) in
