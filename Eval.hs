@@ -38,6 +38,8 @@ occurFV v (Variable v') = v == v'
 occurFV _ Placeholder = False
 
 unify :: Term -> Term -> Me ()
+unify Placeholder _ = return ()
+unify _ Placeholder = return ()
 unify (Variable v0) t1 = do
   eenv <- get
   case Map.lookup v0 (substMap eenv) of
@@ -58,8 +60,6 @@ unify t0 (Variable v1) = do
         }
 unify (Compound sym0 args0) (Compound sym1 args1) | sym0 == sym1 =
   zipWithM_ unify args0 args1
-unify Placeholder _ = return ()
-unify _ Placeholder = return ()
 unify _ _ = mzero
 
 evalTerm :: Term -> Me ()
