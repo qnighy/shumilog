@@ -6,7 +6,7 @@ import Data.Maybe (fromJust)
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State.Strict
--- import Control.Monad.Cont
+import Control.Monad.Cont
 import Control.Monad.List
 import Control.Monad.Error
 import Control.Applicative
@@ -14,18 +14,6 @@ import qualified Data.Map.Strict as Map
 import Terms
 import Preterm
 
-data EvalEnvironment = EvalEnvironment {
-  maxVarID :: !Int,
-  substMap :: !(Map.Map Int Term)
-}
-
-emptyEvalEnv :: EvalEnvironment
-emptyEvalEnv = EvalEnvironment {
-  maxVarID = 0,
-  substMap = Map.empty
-}
-
-type Me = StateT EvalEnvironment (ListT M)
 
 abstractOut :: AbstractableElement a => Abstraction a -> Me a
 abstractOut x = do
@@ -70,14 +58,16 @@ evalTerm (Compound sym args) = do
   case Map.lookup sym (predicates env) of
     Just (NormalPredicateDef clauses _) ->
       msum (map (evalClause args) clauses)
-    Just (SpecialPredicateDef) -> throwError "TODO: SpecialPredicateDef"
-    Nothing -> throwError "Cannot find predicate"
+    Just (SpecialPredicateDef pfun) -> pfun args
+    Nothing -> lift $ lift $ lift $ throwError "Cannot find predicate"
 evalTerm (Variable v) = do
   eenv <- get
   case Map.lookup v (substMap eenv) of
     Just t -> evalTerm t
-    Nothing -> throwError "Arguments are not sufficiently instantiated"
-evalTerm Placeholder = throwError "Arguments are not sufficiently instantiated"
+    Nothing -> lift $ lift $ lift $
+                 throwError "Arguments are not sufficiently instantiated"
+evalTerm Placeholder =
+  lift $ lift $ lift $ throwError "Arguments are not sufficiently instantiated"
 
 evalClause :: [Term] -> Abstraction ([Term], [Term]) -> Me ()
 evalClause pargs cl = do
@@ -92,7 +82,8 @@ evalQuery' q = do
 
 evalQuery :: Abstraction [Term] -> M ()
 evalQuery q = do
-  lst <- runListT $ flip execStateT emptyEvalEnv $ evalQuery' q
+  lst <- flip runContT return $ runListT $
+           flip execStateT emptyEvalEnv $ evalQuery' q
   -- liftIO $ putStrLn $ (show $ length lst) ++ " answers"
   forM_ lst (\eenv ->
     let varids = filter (<abstractionSize q) (Map.keys (substMap eenv)) in

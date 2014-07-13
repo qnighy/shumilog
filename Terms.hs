@@ -11,16 +11,22 @@ module Terms (
   Environment(Environment, symbolMap, symbolNames,
               freshSymbolID, predicates, operatorInfo),
   empty_env,
+  initialize_env,
   getsym,
   getsymname,
   TermEnv(TermEnv, abstSize, abstMap, abstNames),
   emptyTermEnv,
-  showTerm
+  showTerm,
+  EvalEnvironment(EvalEnvironment, maxVarID, substMap),
+  emptyEvalEnv,
+  Me
 ) where
 import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
+import Control.Monad.List
+import Control.Monad.Cont
 import Control.Monad.Error
 import Control.Applicative
 
@@ -57,7 +63,7 @@ instance AbstractableElement Term where
 data PredicateDef = NormalPredicateDef
                       [Abstraction ([Term], [Term])]
                       [Abstraction ([Term], [Term])]
-                  | SpecialPredicateDef -- TODO
+                  | SpecialPredicateDef ([Term] -> Me ())
 
 data Environment = Environment {
   symbolMap :: !(Map.Map (String, Int) Symbol),
@@ -94,6 +100,27 @@ empty_env = Environment {
   predicates = Map.empty,
   operatorInfo = foo
 }
+
+addToSpecialPredicateDef ::
+  Symbol -> ([Term] -> Me ()) -> M ()
+addToSpecialPredicateDef nam defn = do
+  env <- get
+  put $ env {
+    predicates =
+      Map.insert nam (SpecialPredicateDef defn) (predicates env)
+  }
+
+addToSpecialPredicateDef' ::
+  (String, Int) -> ([Term] -> Me ()) -> M ()
+addToSpecialPredicateDef' nam defn = do
+  nam' <- getsym nam
+  addToSpecialPredicateDef nam' defn
+
+initialize_env :: M ()
+initialize_env = do
+  addToSpecialPredicateDef' ("fail", 0) (\_ -> mzero)
+  -- addToSpecialPredicateDef ("!", 1) (\t ->
+  -- )
 
 getsym :: (String, Int) -> M Symbol
 getsym nam = do
@@ -136,3 +163,17 @@ showTerm (Compound sym args) = do
 showTerm (Variable varid) = return $ "?" ++ show varid
 showTerm Placeholder = return $ "_"
 
+-- These things should be in Eval.hs
+
+data EvalEnvironment = EvalEnvironment {
+  maxVarID :: !Int,
+  substMap :: !(Map.Map Int Term)
+}
+
+emptyEvalEnv :: EvalEnvironment
+emptyEvalEnv = EvalEnvironment {
+  maxVarID = 0,
+  substMap = Map.empty
+}
+
+type Me = StateT EvalEnvironment (ListT (ContT [EvalEnvironment] M))

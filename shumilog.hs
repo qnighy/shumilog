@@ -33,7 +33,7 @@ main = do
   handle <- openFile fname ReadMode
   contents <- hGetContents handle
   let res' = runParserT readEvalF () fname contents
-  res <- flip evalStateT empty_env $ runErrorT $ res'
+  res <- flip evalStateT empty_env $ runErrorT $ (initialize_env *> res')
   case res of
     Left err -> putStrLn $ show $ err
     Right (Left err) -> putStrLn $ show $ err
