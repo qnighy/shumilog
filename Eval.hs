@@ -1,6 +1,8 @@
 module Eval (
   evalQuery
 ) where
+import Data.List (intercalate)
+import Data.Maybe (fromJust)
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -86,26 +88,38 @@ evalQuery' q = do
   qvalue <- abstractOut q
   mapM_ evalTerm qvalue
 
--- type Me = StateT EvalEnvironment (ListT M)
-
 evalQuery :: Abstraction [Term] -> M ()
 evalQuery q = do
   lst <- runListT $ flip execStateT emptyEvalEnv $ evalQuery' q
-  liftIO $ putStrLn $ (show $ length lst) ++ " answers"
+  -- liftIO $ putStrLn $ (show $ length lst) ++ " answers"
+  forM_ lst (\eenv ->
+    let varids = filter (<abstractionSize q) (Map.keys (substMap eenv)) in
+    if length varids == 0 then
+      liftIO $ putStrLn $ "true ;"
+    else
+      forM_ varids (\varid -> do
+        liftIO $ putStr $
+          Map.findWithDefault ("?" ++ show varid)
+                              varid (abstractionNames q) ++ " = "
+        termstr <- showTermA q eenv
+                             (fromJust $ Map.lookup varid (substMap eenv))
+        liftIO $ putStrLn $ termstr ++ " ;"))
+  liftIO $ putStrLn $ "false ."
 
--- evalPredicates_ :: [Predicate] -> M ()
--- evalPredicates_ ps = mapM_ evalPredicate ps
+showTermA :: Abstraction a -> EvalEnvironment -> Term -> M String
+showTermA a eenv (Compound sym []) = getsymname sym
+showTermA a eenv (Compound sym args) = do
+  nam <- getsymname sym
+  argstr <- mapM (showTermA a eenv) args
+  return $ nam ++ "(" ++ intercalate ", " argstr ++ ")"
+showTermA a eenv (Variable varid) = do
+  case Map.lookup varid (substMap eenv) of
+    Just t -> showTermA a eenv t
+    Nothing ->
+      if varid < abstractionSize a then
+        return $ Map.findWithDefault ("?" ++ show varid)
+                                     varid (abstractionNames a)
+      else
+        return $ "?" ++ show varid
+showTermA _ _ Placeholder = return $ "_"
 
--- evalQuery :: Monad m =>
---              Query ->
---              ReaderT Environment (ErrorT String m) [Map.Map Int Term]
--- evalQuery q = do
---   env <- ask
---   let initial_senv = SubstEnv {
---     maxVarID = queryAbstraction q,
---     substMap = Map.empty
---   }
---   lift $ (mapErrorT $ flip runContT $ return)
---        $ runListT $ fmap substMap
---        $ flip execStateT initial_senv $ flip runReaderT env
---        $ evalPredicates_ (queryValue q)
