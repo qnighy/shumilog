@@ -52,33 +52,53 @@ unify (Compound sym0 args0) (Compound sym1 args1) | sym0 == sym1 =
   zipWithM_ unify args0 args1
 unify _ _ = mzero
 
-evalTerm :: Term -> Me ()
-evalTerm (Compound sym args) = do
+evalTermsC :: (() -> Me ()) -> [Term] -> Me ()
+evalTermsC exit [] = return ()
+evalTermsC exit (Compound sym args:remain) = do
   env <- lift get
   case Map.lookup sym (predicates env) of
     Just (NormalPredicateDef clauses _) ->
-      msum (map (evalClause args) clauses)
-    Just (SpecialPredicateDef pfun) -> pfun args
+      evalClauses args clauses *> evalTermsC exit remain
+    Just (SpecialPredicateDef pfun) ->
+      pfun args *> evalTermsC exit remain
+    -- Just Cut -> evalTermsC return remain
+    -- Just Cut -> exit () *> evalTermsC return remain
+    Just Cut -> evalTermsC return remain *> exit ()
+    -- Just Cut -> liftIO (putStrLn "cut") *> evalTermsC return remain *> liftIO (putStrLn "exiting") *> exit ()
+    -- Just Cut -> exit ()
     Nothing -> lift $ lift $ lift $ throwError "Cannot find predicate"
-evalTerm (Variable v) = do
+evalTermsC exit (Variable v:remain) = do
   eenv <- get
   case Map.lookup v (substMap eenv) of
-    Just t -> evalTerm t
+    Just t -> evalTermsC exit (t:remain)
     Nothing -> lift $ lift $ lift $
                  throwError "Arguments are not sufficiently instantiated"
-evalTerm Placeholder =
+evalTermsC _ (Placeholder:_) =
   lift $ lift $ lift $ throwError "Arguments are not sufficiently instantiated"
 
-evalClause :: [Term] -> Abstraction ([Term], [Term]) -> Me ()
-evalClause pargs cl = do
+evalClauses :: [Term] -> [Abstraction ([Term], [Term])] -> Me ()
+evalClauses pargs clauses =
+  callCC (\exit -> evalClausesC exit pargs clauses)
+
+evalClausesC ::
+  (() -> Me ()) -> [Term] -> [Abstraction ([Term], [Term])] -> Me ()
+evalClausesC _ pargs [] = mzero
+evalClausesC exit pargs (cl:cls) =
+  evalClauseC exit pargs cl <|> evalClauses pargs cls
+
+evalClauseC :: (() -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
+evalClauseC exit pargs cl = do
   (args, clvalue) <- abstractOut cl
   zipWithM_ unify args pargs
-  mapM_ evalTerm clvalue
+  evalTermsC exit clvalue
 
 evalQuery' :: Abstraction [Term] -> Me ()
-evalQuery' q = do
+evalQuery' q = callCC (\exit -> evalQuery'C exit q)
+
+evalQuery'C :: (() -> Me ()) -> Abstraction [Term] -> Me ()
+evalQuery'C exit q = do
   qvalue <- abstractOut q
-  mapM_ evalTerm qvalue
+  evalTermsC exit qvalue
 
 evalQuery :: Abstraction [Term] -> M ()
 evalQuery q = do

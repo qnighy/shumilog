@@ -1,3 +1,24 @@
 /* vim: set ft=prolog: */
-?- fail.
-
+foo(x).
+foo(y) :- '!'.
+foo(z).
+bar(x).
+bar(y).
+bar(z).
+?- foo(X).
+?- bar(X).
+?- bar(X),'!'.
+?- foo(X),fail.
+?- bar(X),fail.
+?- fail,fail.
+true.
+not(X) :- X,'!',fail.
+not(_).
+?- not(true).
+?- not(fail).
+not1(X,x) :- X,'!',fail.
+not1(_,y).
+?- not1(true,X).
+?- not1(fail,X).
+?- bar(X).
+?- '!',bar(X).

@@ -7,7 +7,7 @@ module Terms (
   shiftElement,
   Term(Compound, Variable, Placeholder),
   Abstraction(Abstraction, abstractionSize, abstractionNames, abstractionValue),
-  PredicateDef(NormalPredicateDef,SpecialPredicateDef),
+  PredicateDef(NormalPredicateDef,SpecialPredicateDef, Cut),
   Environment(Environment, symbolMap, symbolNames,
               freshSymbolID, predicates, operatorInfo),
   empty_env,
@@ -64,6 +64,7 @@ data PredicateDef = NormalPredicateDef
                       [Abstraction ([Term], [Term])]
                       [Abstraction ([Term], [Term])]
                   | SpecialPredicateDef ([Term] -> Me ())
+                  | Cut
 
 data Environment = Environment {
   symbolMap :: !(Map.Map (String, Int) Symbol),
@@ -101,26 +102,25 @@ empty_env = Environment {
   operatorInfo = foo
 }
 
-addToSpecialPredicateDef ::
-  Symbol -> ([Term] -> Me ()) -> M ()
-addToSpecialPredicateDef nam defn = do
+replacePredicateDef ::
+  (String, Int) -> PredicateDef -> M ()
+replacePredicateDef nam defn = do
+  nam' <- getsym nam
   env <- get
   put $ env {
     predicates =
-      Map.insert nam (SpecialPredicateDef defn) (predicates env)
+      Map.insert nam' defn (predicates env)
   }
 
-addToSpecialPredicateDef' ::
+replaceSpecialPredicateDef ::
   (String, Int) -> ([Term] -> Me ()) -> M ()
-addToSpecialPredicateDef' nam defn = do
-  nam' <- getsym nam
-  addToSpecialPredicateDef nam' defn
+replaceSpecialPredicateDef nam defn =
+  replacePredicateDef nam (SpecialPredicateDef defn)
 
 initialize_env :: M ()
 initialize_env = do
-  addToSpecialPredicateDef' ("fail", 0) (\_ -> mzero)
-  -- addToSpecialPredicateDef ("!", 1) (\t ->
-  -- )
+  replaceSpecialPredicateDef ("fail", 0) (\_ -> liftIO (putStrLn "foo") *> mzero)
+  replacePredicateDef ("!", 0) Cut
 
 getsym :: (String, Int) -> M Symbol
 getsym nam = do
