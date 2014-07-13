@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
+import Control.Monad.List
 
 newtype ContT2 r m a = ContT2 {
   runContT2 :: (m a -> m r) -> m r
@@ -13,9 +14,6 @@ newtype ContT2 r m a = ContT2 {
 
 evalContT2 :: ContT2 r m r -> m r
 evalContT2 m = runContT2 m id
-
-callCC2 :: ((ContT2 r m a -> ContT2 r m b) -> ContT2 r m a) -> ContT2 r m a
-callCC2 f = ContT2 $ \c -> runContT2 (f (\x -> ContT2 $ \_ -> runContT2 x c)) c
 
 instance Functor m => Functor (ContT2 r m) where
   fmap f m = ContT2 $ \c -> runContT2 m (c . fmap f)
@@ -48,3 +46,22 @@ instance Alternative m => Alternative (ContT2 r m) where
   empty = ContT2 ($ empty)
   x <|> y = ContT2 $ \cont ->
     runContT2 x (\z -> runContT2 y (\w -> cont $ z <|> w))
+
+callCC2' :: ((ContT2 r m a -> ContT2 r m b) -> ContT2 r m a) -> ContT2 r m a
+callCC2' f = ContT2 $ \c -> runContT2 (f (\x -> ContT2 $ \_ -> runContT2 x c)) c
+
+class Monad m => MonadCont2 m where
+  callCC2 :: ((m a -> m b) -> m a) -> m a
+
+instance Monad m => MonadCont2 (ContT2 r m) where
+  callCC2 = callCC2'
+
+instance MonadCont2 m => MonadCont2 (ListT m) where
+  callCC2 f = ListT $
+      callCC2 $ \ c ->
+      runListT (f (\ a -> ListT $ c $ runListT a))
+
+instance MonadCont2 m => MonadCont2 (StateT s m) where
+  callCC2 f = ListT $
+      callCC2 $ \ c ->
+      runListT (f (\ a -> ListT $ c $ runListT a))

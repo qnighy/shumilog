@@ -176,4 +176,4 @@ emptyEvalEnv = EvalEnvironment {
   substMap = Map.empty
 }
 
-type Me = ContT2 () (StateT EvalEnvironment (ListT M))
+type Me = (StateT EvalEnvironment (ListT (ContT2 [EvalEnvironment] M)))

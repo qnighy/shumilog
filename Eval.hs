@@ -102,7 +102,7 @@ evalQuery'C exit q = do
 
 evalQuery :: Abstraction [Term] -> M ()
 evalQuery q = do
-  lst <- runListT $ flip execStateT emptyEvalEnv $ evalContT2 $ evalQuery' q
+  lst <- evalContT2 $ runListT $ flip execStateT emptyEvalEnv $ evalQuery' q
   -- liftIO $ putStrLn $ (show $ length lst) ++ " answers"
   forM_ lst (\eenv ->
     let varids = filter (<abstractionSize q) (Map.keys (substMap eenv)) in
