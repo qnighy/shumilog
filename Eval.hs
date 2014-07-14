@@ -1,7 +1,6 @@
 module Eval (
   evalQuery
 ) where
-import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import Control.Monad
 import Control.Monad.Reader
@@ -52,7 +51,7 @@ unify (Compound sym0 args0) (Compound sym1 args1) | sym0 == sym1 =
 unify _ _ = mzero
 
 evalTermsC :: (Me () -> Me ()) -> [Term] -> Me ()
-evalTermsC exit [] = return ()
+evalTermsC _ [] = return ()
 evalTermsC exit (Compound sym args:remain) = do
   env <- lift $ lift get
   case Map.lookup sym (predicates env) of
@@ -74,11 +73,11 @@ evalTermsC _ (Placeholder:_) =
 evalClauses :: [Term] -> [Abstraction ([Term], [Term])] -> Me ()
 evalClauses _ [] = mzero
 evalClauses pargs (cl:cls) = do
-  rem <- callCC (\exit -> do
+  remrun <- callCC (\exit -> do
       evalClauseC exit pargs cl <|> evalClauses pargs cls
       return $ return ()
     )
-  rem
+  remrun
 
 evalClauseC :: (Me () -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
 evalClauseC exit pargs cl = do
@@ -88,11 +87,11 @@ evalClauseC exit pargs cl = do
 
 evalQuery' :: Abstraction [Term] -> Me ()
 evalQuery' q = do
-  rem <- callCC (\exit -> do
+  remrun <- callCC (\exit -> do
       evalQuery'C exit q
       return $ return ()
     )
-  rem
+  remrun
 
 evalQuery'C :: (Me () -> Me ()) -> Abstraction [Term] -> Me ()
 evalQuery'C exit q = do

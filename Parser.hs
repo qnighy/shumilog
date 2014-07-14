@@ -12,7 +12,7 @@ import Preterm
 import Terms
 
 symbolIn :: Stream s m Char => [String] -> [String] -> ParsecT s u m String
-symbolIn [] syms = mzero
+symbolIn [] _ = mzero
 symbolIn (allowedsym:asyms) syms =
   guard (elem allowedsym syms) *> symbol allowedsym <|> symbolIn asyms syms
 
@@ -42,15 +42,15 @@ termOps _ [] =
   symbol "[" *>
     ((return (PCompound "[]" []) <* symbol "]") <|>
      (term_listsyn [",", "|"] <* symbol "]"))
-termOps asyms oprs@((_,XF,oprsym):oprtail) = do
+termOps asyms ((_,XF,oprsym):oprtail) = do
   trm <- termOps asyms oprtail
   syms <- atmost1 $ opEater1 <$> operatorIn asyms oprsym
   return $ fold_eat trm syms
-termOps asyms oprs@((_,YF,oprsym):oprtail) = do
+termOps asyms ((_,YF,oprsym):oprtail) = do
   trm <- termOps asyms oprtail
   syms <- many $ opEater1 <$> operatorIn asyms oprsym
   return $ fold_eat trm syms
-termOps asyms oprs@((_,XFX,oprsym):oprtail) = do
+termOps asyms ((_,XFX,oprsym):oprtail) = do
   trm <- termOps asyms oprtail
   pCompound2 trm <$> operatorIn asyms oprsym <*> termOps asyms oprtail <|>
     return trm
@@ -58,11 +58,11 @@ termOps asyms oprs@((_,XFY,oprsym):oprtail) = do
   trm <- termOps asyms oprtail
   pCompound2 trm <$> operatorIn asyms oprsym <*> termOps asyms oprs <|>
     return trm
-termOps asyms oprs@((_,YFX,oprsym):oprtail) = do
+termOps asyms ((_,YFX,oprsym):oprtail) = do
   trm <- termOps asyms oprtail
   syms <- many $ opEater2 <$> operatorIn2 asyms oprsym oprtail
   return $ fold_eat trm syms
-termOps asyms oprs@((_,FX,oprsym):oprtail) = do
+termOps asyms ((_,FX,oprsym):oprtail) = do
   pCompound1L <$> operatorIn asyms oprsym <*> termOps asyms oprtail <|>
     termOps asyms oprtail
 termOps asyms oprs@((_,FY,oprsym):oprtail) = do

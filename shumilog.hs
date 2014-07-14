@@ -2,11 +2,8 @@
 import Lexer
 import Parser
 import Terms
-import Preterm
 import Compile
-import Eval
 import Text.Parsec
-import qualified Data.Map.Strict as Map
 import Control.Applicative ((*>))
 import Control.Monad.State.Strict
 import Control.Monad.Error
