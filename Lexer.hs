@@ -62,7 +62,8 @@ atom' :: Stream s m Char => [String] -> ParsecT s u m String
 atom' ex =
   small_atom' <|>
   special_atom' ex <|>
-  char '\'' *> many characterInSingleQuote <* char '\''
+  char '\'' *> many characterInSingleQuote <* char '\'' <|>
+  string "!"
 
 atomParen :: Stream s m Char => ParsecT s u m String
 atomParen = lexeme $ try $ atom' [] <* char '('
