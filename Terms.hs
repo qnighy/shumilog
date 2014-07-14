@@ -119,7 +119,7 @@ replaceSpecialPredicateDef nam defn =
 
 initialize_env :: M ()
 initialize_env = do
-  replaceSpecialPredicateDef ("fail", 0) (\_ -> liftIO (putStrLn "DEBUG: fail") *> mzero)
+  replaceSpecialPredicateDef ("fail", 0) (\_ -> mzero)
   replacePredicateDef ("!", 0) Cut
 
 getsym :: (String, Int) -> M Symbol
