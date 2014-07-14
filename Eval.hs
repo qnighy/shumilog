@@ -60,7 +60,9 @@ evalTermsC exit (Compound sym args:remain) = do
     Just (SpecialPredicateDef pfun) ->
       pfun args *> evalTermsC exit remain
     Just Cut -> exit $ evalTermsC exit remain
-    Nothing -> lift $ lift $ lift $ throwError "Cannot find predicate"
+    Nothing -> do
+      nam <- lift $ lift $ lift $ getsymnameQual sym
+      lift $ lift $ lift $ throwError $ "Cannot find predicate " ++ nam
 evalTermsC exit (Variable v:remain) = do
   eenv <- get
   case Map.lookup v (substMap eenv) of

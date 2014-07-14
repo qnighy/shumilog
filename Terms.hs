@@ -14,6 +14,7 @@ module Terms (
   initialize_env,
   getsym,
   getsymname,
+  getsymnameQual,
   TermEnv(TermEnv, abstSize, abstMap, abstNames),
   emptyTermEnv,
   showTerm,
@@ -141,6 +142,12 @@ getsymname :: Symbol -> M String
 getsymname sym = do
   x <- Map.lookup sym <$> (symbolNames <$> get)
   return $ fst $ fromJust x
+
+getsymnameQual :: Symbol -> M String
+getsymnameQual sym = do
+  x <- Map.lookup sym <$> (symbolNames <$> get)
+  let (s,a) = fromJust x
+  return $ s ++ "/" ++ show a
 
 data TermEnv = TermEnv {
   abstSize :: !Int,
