@@ -7,13 +7,12 @@ import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Control.Monad.Cont
-import Control.Monad.List
+import ListT
 import Control.Monad.Error
 import Control.Applicative
 import qualified Data.Map.Strict as Map
 import Terms
 import Preterm
-import ContT2
 
 abstractOut :: AbstractableElement a => Abstraction a -> Me a
 abstractOut x = do
@@ -52,7 +51,7 @@ unify (Compound sym0 args0) (Compound sym1 args1) | sym0 == sym1 =
   zipWithM_ unify args0 args1
 unify _ _ = mzero
 
-evalTermsC :: (Me () -> Me ()) -> [Term] -> Me ()
+evalTermsC :: (() -> Me ()) -> [Term] -> Me ()
 evalTermsC exit [] = return ()
 evalTermsC exit (Compound sym args:remain) = do
   env <- lift $ lift get
@@ -63,7 +62,8 @@ evalTermsC exit (Compound sym args:remain) = do
       pfun args *> evalTermsC exit remain
     -- Just Cut -> evalTermsC return remain
     -- Just Cut -> exit () *> evalTermsC return remain
-    Just Cut -> exit $ evalTermsC exit remain
+    -- Just Cut -> evalTermsC exit remain *> exit ()
+    Just Cut -> liftIO (putStrLn "cut") *> evalTermsC exit remain *> liftIO (putStrLn "exiting") *> exit ()
     -- Just Cut -> liftIO (putStrLn "cut") *> evalTermsC return remain *> liftIO (putStrLn "exiting") *> exit ()
     -- Just Cut -> exit ()
     Nothing -> lift $ lift $ lift $ throwError "Cannot find predicate"
@@ -78,34 +78,32 @@ evalTermsC _ (Placeholder:_) =
 
 evalClauses :: [Term] -> [Abstraction ([Term], [Term])] -> Me ()
 evalClauses pargs clauses =
-  callCC2 (\exit -> evalClausesC exit pargs clauses)
+  callCC (\exit -> evalClausesC exit pargs clauses)
 
 evalClausesC ::
-  (Me () -> Me ()) -> [Term] -> [Abstraction ([Term], [Term])] -> Me ()
+  (() -> Me ()) -> [Term] -> [Abstraction ([Term], [Term])] -> Me ()
 evalClausesC _ pargs [] = mzero
 evalClausesC exit pargs (cl:cls) =
   evalClauseC exit pargs cl <|> evalClauses pargs cls
 
-evalClauseC :: (Me () -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
+evalClauseC :: (() -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
 evalClauseC exit pargs cl = do
   (args, clvalue) <- abstractOut cl
   zipWithM_ unify args pargs
   evalTermsC exit clvalue
 
 evalQuery' :: Abstraction [Term] -> Me ()
-evalQuery' q = callCC2 (\exit -> evalQuery'C exit q)
+evalQuery' q = callCC (\exit -> evalQuery'C exit q)
 
-evalQuery'C :: (Me () -> Me ()) -> Abstraction [Term] -> Me ()
+evalQuery'C :: (() -> Me ()) -> Abstraction [Term] -> Me ()
 evalQuery'C exit q = do
   qvalue <- abstractOut q
   evalTermsC exit qvalue
 
 evalQuery :: Abstraction [Term] -> M ()
 evalQuery q = do
-  lst <- evalContT2 $ runListT $ flip execStateT emptyEvalEnv $ evalQuery' q
-  -- liftIO $ putStrLn $ (show $ length lst) ++ " answers"
-  forM_ lst (\eenv ->
-    let varids = filter (<abstractionSize q) (Map.keys (substMap eenv)) in
+  flip runContT return $ foldrListTl (\eenv -> do
+    let varids = filter (<abstractionSize q) (Map.keys (substMap eenv))
     if length varids == 0 then
       liftIO $ putStrLn $ "true ;"
     else
@@ -113,10 +111,14 @@ evalQuery q = do
         liftIO $ putStr $
           Map.findWithDefault ("?" ++ show varid)
                               varid (abstractionNames q) ++ " = "
-        preterm <- showTermA q eenv
+        preterm <- lift $ showTermA q eenv
                              (fromJust $ Map.lookup varid (substMap eenv))
-        liftIO $ putStrLn $ showPreterm preterm ++ " ;"))
-  liftIO $ putStrLn $ "false ."
+        liftIO $ putStrLn $ showPreterm preterm ++ " ;")
+    return id
+   ) (do
+     liftIO $ putStrLn "false ."
+     liftIO $ putStrLn ""
+   ) (flip execStateT emptyEvalEnv $ evalQuery' q)
 
 showTermA :: Abstraction a -> EvalEnvironment -> Term -> M Preterm
 showTermA a eenv (Compound sym args) =

@@ -25,10 +25,10 @@ import Data.List (intercalate)
 import Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import Control.Monad.State.Strict
-import Control.Monad.List
+import ListT
 import Control.Monad.Error
+import Control.Monad.Cont
 import Control.Applicative
-import ContT2
 
 type M = ErrorT String (StateT Environment IO)
 
@@ -119,7 +119,7 @@ replaceSpecialPredicateDef nam defn =
 
 initialize_env :: M ()
 initialize_env = do
-  replaceSpecialPredicateDef ("fail", 0) (\_ -> liftIO (putStrLn "foo") *> mzero)
+  replaceSpecialPredicateDef ("fail", 0) (\_ -> liftIO (putStrLn "DEBUG: fail") *> mzero)
   replacePredicateDef ("!", 0) Cut
 
 getsym :: (String, Int) -> M Symbol
@@ -176,4 +176,4 @@ emptyEvalEnv = EvalEnvironment {
   substMap = Map.empty
 }
 
-type Me = (StateT EvalEnvironment (ListT (ContT2 [EvalEnvironment] M)))
+type Me = (StateT EvalEnvironment (ListT (ContT () M)))

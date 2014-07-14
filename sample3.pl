@@ -18,7 +18,7 @@ not(_).
 ?- not(fail).
 not1(X,x) :- X,'!',fail.
 not1(_,y).
-?- not1(true,X).
-?- not1(fail,X).
+?- not1(true,Z).
+?- not1(fail,Z).
 ?- bar(X).
 ?- '!',bar(X).
