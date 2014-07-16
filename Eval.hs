@@ -74,12 +74,10 @@ evalTermsC _ (Placeholder:_) =
 
 evalClauses :: [Term] -> [Abstraction ([Term], [Term])] -> Me ()
 evalClauses _ [] = mzero
-evalClauses pargs (cl:cls) = do
-  remrun <- callCC (\exit -> do
-      evalClauseC exit pargs cl <|> evalClauses pargs cls
-      return $ return ()
-    )
-  remrun
+evalClauses pargs (cl:cls) = join $ callCC (\exit -> do
+    evalClauseC exit pargs cl <|> evalClauses pargs cls
+    return $ return ()
+  )
 
 evalClauseC :: (Me () -> Me ()) -> [Term] -> Abstraction ([Term], [Term]) -> Me ()
 evalClauseC exit pargs cl = do
@@ -88,12 +86,10 @@ evalClauseC exit pargs cl = do
   evalTermsC exit clvalue
 
 evalQuery' :: Abstraction [Term] -> Me ()
-evalQuery' q = do
-  remrun <- callCC (\exit -> do
-      evalQuery'C exit q
-      return $ return ()
-    )
-  remrun
+evalQuery' q = join $ callCC (\exit -> do
+    evalQuery'C exit q
+    return $ return ()
+  )
 
 evalQuery'C :: (Me () -> Me ()) -> Abstraction [Term] -> Me ()
 evalQuery'C exit q = do
