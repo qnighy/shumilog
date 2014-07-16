@@ -5,7 +5,7 @@ module Terms (
   Symbol(Symbol, symbolID),
   AbstractableElement,
   shiftElement,
-  Term(Compound, Variable, Placeholder),
+  Term(Compound, Variable, TInteger, TFloat, Placeholder),
   Abstraction(Abstraction, abstractionSize, abstractionNames, abstractionValue),
   PredicateDef(NormalPredicateDef,SpecialPredicateDef, Cut),
   Environment(Environment, symbolMap, symbolNames,
@@ -54,11 +54,15 @@ data Abstraction a = Abstraction {
 
 data Term = Compound !Symbol ![Term]
           | Variable !Int
+          | TInteger !Integer
+          | TFloat !Float
           | Placeholder
 
 instance AbstractableElement Term where
   shiftElement s (Compound sym args) = Compound sym (map (shiftElement s) args)
   shiftElement s (Variable num) = Variable (num + s)
+  shiftElement _ (TInteger i) = TInteger i
+  shiftElement _ (TFloat f) = TFloat f
   shiftElement _ Placeholder = Placeholder
 
 data PredicateDef = NormalPredicateDef
@@ -168,6 +172,8 @@ showTerm (Compound sym args) = do
   argstr <- mapM showTerm args
   return $ nam ++ "(" ++ intercalate ", " argstr ++ ")"
 showTerm (Variable varid) = return $ "?" ++ show varid
+showTerm (TInteger i) = return $ show i
+showTerm (TFloat f) = return $ show f
 showTerm Placeholder = return $ "_"
 
 -- These things should be in Eval.hs

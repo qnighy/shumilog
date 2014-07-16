@@ -23,6 +23,8 @@ abstractOut x = do
 occurFV :: Int -> Term -> Bool
 occurFV v (Compound _ args) = any (occurFV v) args
 occurFV v (Variable v') = v == v'
+occurFV _ (TInteger _) = False
+occurFV _ (TFloat _) = False
 occurFV _ Placeholder = False
 
 unify :: Term -> Term -> Me ()
@@ -69,6 +71,10 @@ evalTermsC exit (Variable v:remain) = do
     Just t -> evalTermsC exit (t:remain)
     Nothing -> lift $ lift $ lift $
                  throwError "Arguments are not sufficiently instantiated"
+evalTermsC _ (TInteger _:_) =
+  lift $ lift $ lift $ throwError "callable expected, found an integer"
+evalTermsC _ (TFloat _:_) =
+  lift $ lift $ lift $ throwError "callable expected, found a float"
 evalTermsC _ (Placeholder:_) =
   lift $ lift $ lift $ throwError "Arguments are not sufficiently instantiated"
 
@@ -128,5 +134,7 @@ showTermA a eenv (Variable varid) =
                                      varid (abstractionNames a)
       else
         return $ "?" ++ show varid
+showTermA _ _ (TInteger i) = return $ PInteger i
+showTermA _ _ (TFloat f) = return $ PFloat f
 showTermA _ _ Placeholder = return PPlaceholder
 

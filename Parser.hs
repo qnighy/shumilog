@@ -3,6 +3,7 @@ module Parser (
   OperatorType(XF, YF, XFX, XFY, YFX, FY, FX),
   statementOrEnd
 ) where
+import Data.Char (ord)
 import Data.List ((\\))
 import Text.Parsec
 import Control.Applicative ((<$>),(<$),(<*>),(*>),(<*))
@@ -41,7 +42,9 @@ termOps _ [] =
   symbol "(" *> term [",", "|"] <* symbol ")" <|>
   symbol "[" *>
     ((return (PCompound "[]" []) <* symbol "]") <|>
-     (term_listsyn [",", "|"] <* symbol "]"))
+     (term_listsyn [",", "|"] <* symbol "]")) <|>
+  string_to_intlist <$> pstring <|>
+  PInteger <$> intliteral
 termOps asyms ((_,XF,oprsym):oprtail) = do
   trm <- termOps asyms oprtail
   syms <- atmost1 $ opEater1 <$> operatorIn asyms oprsym
@@ -108,6 +111,11 @@ statementOrEnd :: (MonadState Environment m, Stream s m Char) =>
 statementOrEnd =
   Just <$> term [",", "|"] <* symbol "." <|>
   Nothing <$ eof
+
+string_to_intlist :: String -> Preterm
+string_to_intlist [] = PCompound "[]" []
+string_to_intlist (ch:chs) =
+  PCompound "." [PInteger $ toInteger $ ord ch, string_to_intlist chs]
 
 -- program :: Stream s m Char => ParsecT s u m Program
 -- program = Program <$ whiteSpace <*> many clause <*> many query <* eof

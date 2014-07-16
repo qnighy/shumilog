@@ -1,11 +1,13 @@
 module Preterm (
-  Preterm(PCompound, PVariable, PPlaceholder),
+  Preterm(PCompound, PVariable, PInteger, PFloat, PPlaceholder),
   showPreterm
 ) where
 import Data.List (intercalate)
 
 data Preterm = PCompound String [Preterm]
              | PVariable String
+             | PInteger Integer
+             | PFloat Float
              | PPlaceholder
                deriving (Show, Eq)
 
@@ -16,6 +18,8 @@ showPreterm (PCompound sym []) = sym
 showPreterm (PCompound sym args) =
   sym ++ "(" ++ intercalate ", " (map showPreterm args) ++ ")"
 showPreterm (PVariable varname) = varname
+showPreterm (PInteger i) = show i
+showPreterm (PFloat f) = show f
 showPreterm PPlaceholder = "_"
 
 showPretermList :: Preterm -> Preterm -> String

@@ -33,6 +33,8 @@ compileTerm (PCompound nam args) =
            <*> mapM compileTerm args
 compileTerm (PVariable nam) =
   Variable <$> getvar nam
+compileTerm (PInteger i) = return $ TInteger i
+compileTerm (PFloat f) = return $ TFloat f
 compileTerm PPlaceholder = pure Placeholder
 
 compileTermList :: Preterm -> M2 [Term]

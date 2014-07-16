@@ -3,6 +3,8 @@ module Lexer (
   whiteSpace,
   atomParen,
   atom,
+  pstring,
+  intliteral,
   variable,
   symbol
 )where
@@ -25,6 +27,12 @@ characterInSingleQuote =
   try (string "''") *> return '\'' <|>
   char '\\' *> noneOf "" <|>
   noneOf "'"
+
+characterInDoubleQuote :: Stream s m Char => ParsecT s u m Char
+characterInDoubleQuote =
+  try (string "\"\"") *> return '"' <|>
+  char '\\' *> noneOf "" <|>
+  noneOf "\""
 
 nestedComment :: Stream s m Char => ParsecT s u m ()
 nestedComment = string "/*" *> nestedCommentRest where
@@ -70,6 +78,12 @@ atomParen = lexeme $ try $ atom' [] <* char '('
 
 atom :: Stream s m Char => ParsecT s u m String
 atom = lexeme $ try $ atom' [",", ".", "|"] <* (try (char '(') *> mzero <|> return ())
+
+pstring :: Stream s m Char => ParsecT s u m String
+pstring = char '\"' *> many characterInDoubleQuote <* char '\"'
+
+intliteral :: Stream s m Char => ParsecT s u m Integer
+intliteral = read <$> ((:) <$> digit <*> many digit)
 
 variable :: Stream s m Char => ParsecT s u m String
 variable = lexeme $ try $ do
